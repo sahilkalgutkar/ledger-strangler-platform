@@ -67,4 +67,19 @@ public class GatewayProxyTests : IAsyncLifetime
         var body = await _client.GetStringAsync("/accounts/11111111-1111-1111-1111-111111111111/statements");
         Assert.StartsWith("handled-by:legacy:", body);
     }
+
+    [Fact]
+    public async Task Single_account_with_a_trailing_slash_still_routes_to_the_new_accounts_service()
+    {
+        var body = await _client.GetStringAsync("/accounts/11111111-1111-1111-1111-111111111111/");
+        Assert.StartsWith("handled-by:accounts:", body);
+    }
+
+    [Fact]
+    public async Task A_malformed_empty_id_segment_still_reaches_the_accounts_service_instead_of_the_legacy_catchall()
+    {
+        var response = await _client.PostAsync("/accounts//balance-adjustments", content: null);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.StartsWith("handled-by:accounts:", body);
+    }
 }

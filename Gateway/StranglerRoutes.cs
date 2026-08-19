@@ -15,14 +15,21 @@ public static class StranglerRoutes
     public const string LegacyCluster = "legacy-monolith";
 
     private static readonly Regex StatementsPath = new(@"^/accounts/[^/]+/statements/?$", RegexOptions.Compiled);
-    private static readonly Regex BalanceAdjustmentsPath = new(@"^/accounts/[^/]+/balance-adjustments/?$", RegexOptions.Compiled);
-    private static readonly Regex SingleAccountPath = new(@"^/accounts/[^/]+/?$", RegexOptions.Compiled);
-    private static readonly Regex AccountsCollectionPath = new(@"^/accounts/?$", RegexOptions.Compiled);
 
     /// <summary>
     /// Statements haven't been strangled yet - they still read the legacy monolith's
     /// own copy of account data, so they stay routed to it even though account
     /// CRUD/balance management has already moved to the new service.
+    ///
+    /// Originally this enumerated each individual accounts-service path
+    /// (collection, single account, balance-adjustments) as its own exact match.
+    /// A request with a malformed/empty id segment - "/accounts//balance-
+    /// adjustments" - didn't match any of them and fell through to the legacy
+    /// catch-all instead, which has no route for it either. Modeling it instead
+    /// as "everything under /accounts belongs to the new service, except this
+    /// one carved-out exception" is both simpler and doesn't have that gap: any
+    /// path starting with /accounts reaches a service that can actually reject
+    /// it properly, rather than silently landing on the wrong side of the cut.
     /// </summary>
     public static string ResolveCluster(string path)
     {
@@ -31,7 +38,7 @@ public static class StranglerRoutes
             return LegacyCluster;
         }
 
-        if (BalanceAdjustmentsPath.IsMatch(path) || SingleAccountPath.IsMatch(path) || AccountsCollectionPath.IsMatch(path))
+        if (path.StartsWith("/accounts", StringComparison.OrdinalIgnoreCase))
         {
             return AccountsCluster;
         }
@@ -53,29 +60,22 @@ public static class StranglerRoutes
             },
             new RouteConfig
             {
-                RouteId = "balance-adjustments",
+                RouteId = "accounts-catchall",
                 Order = 2,
                 ClusterId = AccountsCluster,
-                Match = new RouteMatch { Path = "/accounts/{id}/balance-adjustments" }
-            },
-            new RouteConfig
-            {
-                RouteId = "single-account",
-                Order = 3,
-                ClusterId = AccountsCluster,
-                Match = new RouteMatch { Path = "/accounts/{id}" }
+                Match = new RouteMatch { Path = "/accounts/{**catchall}" }
             },
             new RouteConfig
             {
                 RouteId = "accounts-collection",
-                Order = 4,
+                Order = 3,
                 ClusterId = AccountsCluster,
                 Match = new RouteMatch { Path = "/accounts" }
             },
             new RouteConfig
             {
                 RouteId = "legacy-catchall",
-                Order = 5,
+                Order = 4,
                 ClusterId = LegacyCluster,
                 Match = new RouteMatch { Path = "/{**catchall}" }
             }
