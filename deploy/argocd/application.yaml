@@ -1,0 +1,28 @@
+# ArgoCD watches this repo's deploy/k8s path and reconciles the cluster to
+# match it - the GitOps loop: CI builds and pushes images to ACR, this file
+# (or the image tags under deploy/k8s) changes in git, ArgoCD picks up the
+# diff and applies it. Nothing deploys by a human running kubectl against
+# the cluster directly.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ledger-strangler-platform
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/sahilkalgutkar/ledger-strangler-platform.git
+    targetRevision: main
+    path: deploy/k8s
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ledger-strangler
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

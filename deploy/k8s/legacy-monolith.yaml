@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacy-monolith
+  namespace: ledger-strangler
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: legacy-monolith
+  template:
+    metadata:
+      labels:
+        app: legacy-monolith
+    spec:
+      containers:
+        - name: legacy-monolith
+          # EnsureCreated running on every replica's startup is a simplification
+          # carried over from the docker-compose setup - a real cluster would run
+          # schema migrations as a one-off Job before the Deployment rolls out.
+          image: acrprodledgerstrangler.azurecr.io/legacy-monolith:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ConnectionStrings__Legacy
+              valueFrom:
+                secretKeyRef:
+                  name: ledger-strangler-secrets
+                  key: ConnectionStrings__Legacy
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: legacy-monolith
+  namespace: ledger-strangler
+spec:
+  selector:
+    app: legacy-monolith
+  ports:
+    - port: 8080
+      targetPort: 8080
