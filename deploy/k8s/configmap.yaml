@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ledger-strangler-config
+  namespace: ledger-strangler
+data:
+  Services__AccountsService: "http://accounts-service:8080"
+  Services__LegacyMonolith: "http://legacy-monolith:8080"
+  Cassandra__ContactPoint: "cassandra"
+  Cassandra__Port: "9042"
+  Cassandra__Keyspace: "ledger"
