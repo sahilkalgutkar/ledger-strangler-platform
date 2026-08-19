@@ -4,8 +4,17 @@ using AccountsService.Events;
 using AccountsService.Services;
 using CassandraSession = Cassandra.ISession;
 using Cassandra;
+using Serilog;
+using Serilog.Formatting.Compact;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseSerilog((context, config) => config
+    .ReadFrom.Configuration(context.Configuration)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Service", "accounts-service")
+    .WriteTo.Console(new CompactJsonFormatter())
+    .WriteTo.File(new CompactJsonFormatter(), "/var/log/ledger-strangler-platform/accounts-service.log", rollingInterval: RollingInterval.Day));
 
 if (!builder.Environment.IsEnvironment("Testing"))
 {
@@ -27,6 +36,8 @@ else
 builder.Services.AddScoped<AccountService>();
 
 var app = builder.Build();
+
+app.UseSerilogRequestLogging();
 
 app.MapGet("/", () => "accounts-service: strangled off the legacy monolith");
 

@@ -2,8 +2,17 @@ using LegacyMonolith;
 using LegacyMonolith.Data;
 using LegacyMonolith.Services;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
+using Serilog.Formatting.Compact;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseSerilog((context, config) => config
+    .ReadFrom.Configuration(context.Configuration)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Service", "legacy-monolith")
+    .WriteTo.Console(new CompactJsonFormatter())
+    .WriteTo.File(new CompactJsonFormatter(), "/var/log/ledger-strangler-platform/legacy-monolith.log", rollingInterval: RollingInterval.Day));
 
 var connectionString = builder.Configuration.GetConnectionString("Legacy")
     ?? "Host=localhost;Port=5432;Database=legacy_monolith;Username=postgres;Password=postgres";
@@ -13,6 +22,8 @@ builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<StatementService>();
 
 var app = builder.Build();
+
+app.UseSerilogRequestLogging();
 
 if (!app.Environment.IsEnvironment("Testing"))
 {

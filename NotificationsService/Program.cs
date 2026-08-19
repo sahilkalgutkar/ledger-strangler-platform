@@ -2,8 +2,17 @@ using Microsoft.EntityFrameworkCore;
 using NotificationsService.Consumers;
 using NotificationsService.Data;
 using NotificationsService.Services;
+using Serilog;
+using Serilog.Formatting.Compact;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseSerilog((context, config) => config
+    .ReadFrom.Configuration(context.Configuration)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Service", "notifications-service")
+    .WriteTo.Console(new CompactJsonFormatter())
+    .WriteTo.File(new CompactJsonFormatter(), "/var/log/ledger-strangler-platform/notifications-service.log", rollingInterval: RollingInterval.Day));
 
 var dbConnectionString = builder.Configuration.GetConnectionString("Notifications")
     ?? "Host=localhost;Port=5432;Database=notifications;Username=postgres;Password=postgres";
@@ -15,6 +24,8 @@ builder.Services.AddSingleton(new BalanceChangedConsumerOptions(rabbitConnection
 builder.Services.AddHostedService<BalanceChangedConsumer>();
 
 var app = builder.Build();
+
+app.UseSerilogRequestLogging();
 
 using (var scope = app.Services.CreateScope())
 {
