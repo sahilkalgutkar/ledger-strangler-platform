@@ -7,8 +7,6 @@ using Cassandra;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSingleton<IEventPublisher, NoOpEventPublisher>();
-
 if (!builder.Environment.IsEnvironment("Testing"))
 {
     var contactPoint = builder.Configuration["Cassandra:ContactPoint"] ?? "localhost";
@@ -17,6 +15,13 @@ if (!builder.Environment.IsEnvironment("Testing"))
 
     builder.Services.AddSingleton(_ => CassandraSessionFactory.Connect(contactPoint, port, keyspace));
     builder.Services.AddSingleton(sp => AccountsRepository.Create(sp.GetRequiredService<CassandraSession>()));
+
+    var rabbitConnectionString = builder.Configuration["RabbitMq:ConnectionString"] ?? "amqp://guest:guest@localhost:5672";
+    builder.Services.AddSingleton<IEventPublisher>(_ => new RabbitMqEventPublisher(rabbitConnectionString));
+}
+else
+{
+    builder.Services.AddSingleton<IEventPublisher, NoOpEventPublisher>();
 }
 
 builder.Services.AddScoped<AccountService>();
