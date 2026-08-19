@@ -13,7 +13,7 @@ namespace AccountsService.Data;
 /// </summary>
 public class AccountsRepository
 {
-    private const int MaxOptimisticRetries = 5;
+    private const int MaxOptimisticRetries = 10;
 
     private readonly CassandraSession _session;
     private readonly PreparedStatement _insert;
@@ -86,6 +86,11 @@ public class AccountsRepository
             {
                 return current with { Balance = newBalance };
             }
+
+            // Lost the race - back off before retrying so a burst of concurrent
+            // writers on the same account spreads out instead of all retrying in
+            // lockstep and losing again. Random jitter, growing with each attempt.
+            await Task.Delay(Random.Shared.Next(5, 20) * (attempt + 1));
         }
 
         throw new ConcurrentUpdateException(id);
