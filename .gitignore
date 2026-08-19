@@ -1,0 +1,20 @@
+## .NET
+bin/
+obj/
+*.user
+.vs/
+
+## Test results / coverage
+TestResults/
+coverage/
+*.trx
+
+## Terraform
+terraform/**/.terraform/
+terraform/**/*.tfstate
+terraform/**/*.tfstate.backup
+terraform/**/.terraform.lock.hcl
+terraform/**/*.tfvars
+
+## OS
+.DS_Store
