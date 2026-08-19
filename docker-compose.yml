@@ -1,0 +1,171 @@
+name: ledger-strangler-platform
+
+services:
+  postgres-legacy:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: legacy_monolith
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres-legacy-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-notifications:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: notifications
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "15433:5432"
+    volumes:
+      - postgres-notifications-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  cassandra:
+    image: cassandra:4.1
+    ports:
+      - "9042:9042"
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'SELECT release_version FROM system.local' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  legacy-monolith:
+    build:
+      context: .
+      dockerfile: LegacyMonolith/Dockerfile
+    environment:
+      ConnectionStrings__Legacy: "Host=postgres-legacy;Port=5432;Database=legacy_monolith;Username=postgres;Password=postgres"
+    depends_on:
+      postgres-legacy:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "5299:8080"
+    volumes:
+      - service-logs:/var/log/ledger-strangler-platform
+
+  accounts-service:
+    build:
+      context: .
+      dockerfile: AccountsService/Dockerfile
+    environment:
+      Cassandra__ContactPoint: "cassandra"
+      Cassandra__Port: "9042"
+      Cassandra__Keyspace: "ledger"
+      RabbitMq__ConnectionString: "amqp://guest:guest@rabbitmq:5672"
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "5301:8080"
+    volumes:
+      - service-logs:/var/log/ledger-strangler-platform
+
+  notifications-service:
+    build:
+      context: .
+      dockerfile: NotificationsService/Dockerfile
+    environment:
+      ConnectionStrings__Notifications: "Host=postgres-notifications;Port=5432;Database=notifications;Username=postgres;Password=postgres"
+      RabbitMq__ConnectionString: "amqp://guest:guest@rabbitmq:5672"
+    depends_on:
+      postgres-notifications:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "5302:8080"
+    volumes:
+      - service-logs:/var/log/ledger-strangler-platform
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Gateway/Dockerfile
+    environment:
+      Services__AccountsService: "http://accounts-service:8080"
+      Services__LegacyMonolith: "http://legacy-monolith:8080"
+    depends_on:
+      - legacy-monolith
+      - accounts-service
+    restart: unless-stopped
+    ports:
+      - "5300:8080"
+    volumes:
+      - service-logs:/var/log/ledger-strangler-platform
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.15.0
+    volumes:
+      - ./deploy/elk/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    depends_on:
+      - elasticsearch
+    ports:
+      - "5044:5044"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    environment:
+      ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+    depends_on:
+      - elasticsearch
+    ports:
+      - "5601:5601"
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.0
+    user: root
+    command: ["-e", "--strict.perms=false"]
+    volumes:
+      - ./deploy/elk/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - service-logs:/var/log/ledger-strangler-platform:ro
+    depends_on:
+      - logstash
+
+volumes:
+  postgres-legacy-data:
+  postgres-notifications-data:
+  cassandra-data:
+  elasticsearch-data:
+  service-logs:
