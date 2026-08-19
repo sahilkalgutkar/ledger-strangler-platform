@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      # Testcontainers-backed integration tests need real Postgres/Cassandra/
+      # RabbitMQ instances - ubuntu-latest runners have Docker available out
+      # of the box, so no service containers to wire up here. Running the four
+      # test projects one at a time rather than letting `dotnet test` fan them
+      # out in parallel, since each spins up its own containers and a runner
+      # doesn't have the headroom to run all of them at once.
+      - name: Test with coverage
+        run: |
+          for project in LegacyMonolith.Tests Gateway.Tests AccountsService.Tests NotificationsService.Tests; do
+            dotnet test "$project/$project.csproj" --no-build --configuration Release \
+              --collect:"XPlat Code Coverage" \
+              --results-directory ./coverage
+          done
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./coverage
+          fail_ci_if_error: false
