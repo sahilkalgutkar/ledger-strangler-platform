@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: accounts-service
+  namespace: ledger-strangler
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: accounts-service
+  template:
+    metadata:
+      labels:
+        app: accounts-service
+    spec:
+      containers:
+        - name: accounts-service
+          image: acrprodledgerstrangler.azurecr.io/accounts-service:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: ledger-strangler-config
+          env:
+            - name: RabbitMq__ConnectionString
+              valueFrom:
+                secretKeyRef:
+                  name: ledger-strangler-secrets
+                  key: RabbitMq__ConnectionString
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: accounts-service
+  namespace: ledger-strangler
+spec:
+  selector:
+    app: accounts-service
+  ports:
+    - port: 8080
+      targetPort: 8080
