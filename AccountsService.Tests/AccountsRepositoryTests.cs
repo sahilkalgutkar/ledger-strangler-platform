@@ -30,6 +30,12 @@ public class AccountsRepositoryTests : IAsyncLifetime
         Assert.Equal(account.Id, fetched!.Id);
         Assert.Equal("Jane Doe", fetched.CustomerName);
         Assert.Equal(100m, fetched.Balance);
+        // The timestamp is the part of this round trip that used to be taken on
+        // trust. Cassandra stores milliseconds, so an untruncated CreatedAt is
+        // returned by CreateAsync and then never seen again - a client comparing
+        // a create response against a later read would find two different times
+        // for one account.
+        Assert.Equal(account.CreatedAt, fetched.CreatedAt);
     }
 
     [Fact]
