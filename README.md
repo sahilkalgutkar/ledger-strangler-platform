@@ -90,6 +90,23 @@ curl -X POST http://localhost:5300/accounts/<id>/statements \
 
 Kibana is at `http://localhost:5601`, RabbitMQ's management UI at `http://localhost:15672` (guest/guest).
 
+Every host port the stack publishes is overridable, which matters because 9042,
+5672, 9200 and 5601 are usually already taken on a machine that has run a
+Cassandra, a RabbitMQ or an ELK stack — and the whole `docker compose up`
+aborts on the first collision. `.env.example` lists all twelve; the two you
+normally need are the Gateway (`GATEWAY_HOST_PORT`, the `:5300` in the curls
+above) and NotificationsService (`NOTIFICATIONS_SERVICE_HOST_PORT`, the
+`:5302`):
+
+```bash
+GATEWAY_HOST_PORT=5400 KIBANA_HOST_PORT=5701 docker compose up --build
+curl -X POST http://localhost:5400/accounts ...
+```
+
+Only the host side moves — inside the compose network the Gateway still reaches
+the services, and the services still reach Postgres, Cassandra and RabbitMQ, on
+the standard ports.
+
 ## Testing it
 
 Each service is tested at the level that actually proves something: EF Core InMemory for pure business logic, real Postgres/Cassandra/RabbitMQ via Testcontainers for anything that talks to infrastructure, and `WebApplicationFactory` for the HTTP layer itself - including one test that spins up two real fake downstream servers on real sockets to prove the Gateway's YARP routing actually forwards bytes to the right place, not just that the route table looks right on paper.
