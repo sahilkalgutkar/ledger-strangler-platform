@@ -82,11 +82,23 @@ curl -X POST http://localhost:5300/accounts/<id>/balance-adjustments \
 # The event lands as a notification a moment later
 curl http://localhost:5302/notifications/<id>
 
-# Statements still route to the legacy monolith
-curl -X POST http://localhost:5300/accounts/<id>/statements \
+# Statements still route to the legacy monolith - but the monolith keeps its own
+# accounts in Postgres and knows nothing about the one above, which lives in
+# Cassandra, so use an account it does own. That split is the cut line, not a bug.
+curl -X POST http://localhost:5299/accounts \
+  -H 'Content-Type: application/json' \
+  -d '{"customerName":"Legacy Larry","openingBalance":500}'
+
+curl -X POST http://localhost:5300/accounts/<legacy-id>/statements \
   -H 'Content-Type: application/json' \
   -d '{"periodStart":"2026-01-01T00:00:00Z","periodEnd":"2026-01-31T00:00:00Z"}'
 ```
+
+That last one goes through the Gateway on 5300 and comes back `201 Created`
+with the statement, which is the point: the Gateway routes `/accounts` writes
+to AccountsService and `/accounts/{id}/statements` to the monolith, and a
+caller only ever talks to 5300. The direct call to 5299 above is a seeding
+step, standing in for the accounts a real monolith would already have.
 
 Kibana is at `http://localhost:5601`, RabbitMQ's management UI at `http://localhost:15672` (guest/guest).
 
